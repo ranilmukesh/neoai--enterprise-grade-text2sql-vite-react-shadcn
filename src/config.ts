@@ -1,1 +1,1 @@
-export const GROQ_API_KEY = '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';
+export const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY ?? '';

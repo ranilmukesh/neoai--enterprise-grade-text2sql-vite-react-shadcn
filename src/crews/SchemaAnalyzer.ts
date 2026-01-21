@@ -4,9 +4,13 @@ import type { SchemaNode, TableSchema, Table } from './types';
 export class SchemaAnalyzer extends BaseAgent {
   private schemaTree: SchemaNode;
 
-  constructor(schema: TableSchema[]) {
-    super();
+  constructor(schema: TableSchema[], modelName?: string) {
+    super(modelName);
     this.schemaTree = this.buildSchemaTree(schema);
+  }
+
+  setModel(modelName: string) {
+    this.model = new BaseAgent(modelName).model;
   }
 
   private buildSchemaTree(schema: TableSchema[]): SchemaNode {

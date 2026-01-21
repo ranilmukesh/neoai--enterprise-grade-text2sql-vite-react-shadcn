@@ -1,12 +1,22 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Search } from 'lucide-react';
 import { CrewManager } from './crews/CrewManager';
 import type { TableSchema } from './crews/types';
+import { GROQ_API_KEY } from './config';
+
+type GroqModel = {
+  id: string;
+  owned_by?: string;
+};
 
 function App() {
   const [query, setQuery] = useState('');
   const [result, setResult] = useState('');
   const [loading, setLoading] = useState(false);
+  const [models, setModels] = useState<GroqModel[]>([]);
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const [modelsError, setModelsError] = useState('');
+  const [selectedModel, setSelectedModel] = useState('llama-3.1-8b-instant');
 
   const schema: TableSchema[] = [
     
@@ -670,14 +680,84 @@ function App() {
 
   ];
 
-  const crewManager = new CrewManager(schema);
+  const crewManager = useMemo(() => new CrewManager(schema, selectedModel), [schema, selectedModel]);
+
+  useEffect(() => {
+    const defaultModels: GroqModel[] = [
+      { id: 'llama-3.1-8b-instant' },
+      { id: 'llama-3.3-70b-versatile' },
+      { id: 'meta-llama/llama-guard-4-12b' },
+      { id: 'openai/gpt-oss-120b' },
+      { id: 'openai/gpt-oss-20b' },
+      { id: 'whisper-large-v3' },
+      { id: 'whisper-large-v3-turbo' },
+      { id: 'groq/compound' },
+      { id: 'groq/compound-mini' },
+      { id: 'meta-llama/llama-4-maverick-17b-128e-instruct' },
+      { id: 'meta-llama/llama-4-scout-17b-16e-instruct' },
+      { id: 'openai/gpt-oss-safeguard-20b' },
+      { id: 'qwen/qwen3-32b' },
+      { id: 'canopylabs/orpheus-arabic-saudi' },
+      { id: 'canopylabs/orpheus-v1-english' },
+      { id: 'meta-llama/llama-prompt-guard-2-22m' },
+      { id: 'meta-llama/llama-prompt-guard-2-86m' },
+      { id: 'moonshotai/kimi-k2-instruct-0905' },
+    ];
+
+    const fetchModels = async () => {
+      if (!GROQ_API_KEY) {
+        setModels(defaultModels);
+        setModelsError('Set VITE_GROQ_API_KEY to load live models.');
+        return;
+      }
+
+      setModelsLoading(true);
+      setModelsError('');
+
+      try {
+        const response = await fetch('https://api.groq.com/openai/v1/models', {
+          headers: {
+            Authorization: `Bearer ${GROQ_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch models (${response.status})`);
+        }
+
+        const data = await response.json();
+        const fetchedModels: GroqModel[] = Array.isArray(data?.data)
+          ? data.data
+              .map((model: any) => (model?.id ? { id: model.id, owned_by: model.owned_by } : null))
+              .filter(Boolean)
+          : [];
+
+        const modelsToUse = fetchedModels.length ? fetchedModels : defaultModels;
+        setModels(modelsToUse);
+        setSelectedModel((prev) => prev || modelsToUse[0]?.id || 'llama-3.1-8b-instant');
+      } catch (error) {
+        console.error('Error fetching models', error);
+        setModels(defaultModels);
+        setModelsError('Unable to fetch live models. Using defaults.');
+      } finally {
+        setModelsLoading(false);
+      }
+    };
+
+    fetchModels();
+  }, []);
 
   const handleSearch = async () => {
     if (!query.trim()) return;
+    if (!GROQ_API_KEY) {
+      setResult('GROQ API key missing. Please set VITE_GROQ_API_KEY.');
+      return;
+    }
     
     setLoading(true);
     try {
-      const response = await crewManager.processQuery(query);
+      const response = await crewManager.processQuery(query, selectedModel);
       setResult(response);
     } catch (error) {
       console.error('Error:', error);
@@ -691,12 +771,31 @@ function App() {
     <div className="min-h-screen bg-gray-50 p-8">
       <div className="max-w-4xl mx-auto">
         <div className="bg-white rounded-lg shadow-md p-6">
-          <h1 className="text-2xl font-bold mb-6">Database Query Assistant</h1>
-          
-          <div className="flex gap-2 mb-6">
-            <input
-              type="text"
-              value={query}
+           <h1 className="text-2xl font-bold mb-6">Database Query Assistant</h1>
+
+          <div className="mb-4">
+            <label className="text-sm font-medium text-gray-700">Select model</label>
+            <div className="flex items-center gap-2 mt-1">
+              <select
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value)}
+                className="p-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {models.map((model) => (
+                  <option key={model.id} value={model.id}>
+                    {model.id}
+                  </option>
+                ))}
+              </select>
+              {modelsLoading && <span className="text-sm text-gray-500">Loading...</span>}
+            </div>
+            {modelsError && <p className="text-sm text-red-600 mt-1">{modelsError}</p>}
+          </div>
+           
+           <div className="flex gap-2 mb-6">
+             <input
+               type="text"
+               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Enter your query..."
               className="flex-1 p-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
